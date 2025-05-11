@@ -7,15 +7,16 @@ This project, developed for the Global Agent Hackathon May 2025, is a Python-bas
 The primary goal is to create an intelligent agent that can:
 1.  **Research Topics**: Gather information and existing posts from social media platforms (initially X.com/Twitter) based on user prompts.
 2.  **Generate Content Concepts**: Based on the research, propose ideas or concepts for new social media posts.
-3.  **(Future) Draft Posts**: Generate full draft posts for review.
-4.  **(Future) Post to Platforms**: Automate the posting of approved content.
+3.  **Draft Posts**: Generate full draft posts for review.
+4.  **Post to Platforms**: Automate the posting of approved content to Twitter/X.com.
 5.  **(Future) Social Listening**: Monitor social media for mentions, trends, or sentiment related to specified topics.
 
 ## Architecture
 
 -   **`Agno OrchestratorAgent` (`src/auto_sns_agent/agents/orchestrator.py`)**: The main controller that manages the workflow. It interprets user requests and delegates tasks to other components or tools.
--   **`BrowserUse Interaction Module` (via `src/auto_sns_agent/tools/browser_tools.py` and `social_media_tools.py`)**: Handles all browser-based interactions, such as logging into platforms, performing searches, extracting content, and (eventually) posting. This is implemented as Agno-compatible tools that use the `browser-use` library.
+-   **`BrowserUse Interaction Module` (via `src/auto_sns_agent/tools/browser_tools.py` and `social_media_tools.py`)**: Handles all browser-based interactions, such as logging into platforms, performing searches, extracting content, and posting. This is implemented as Agno-compatible tools that use the `browser-use` library.
 -   **`ContentGeneratorAgent` (`src/auto_sns_agent/agents/content_generator.py`)**: A specialized agent responsible for taking research findings or briefs and generating creative social media post content.
+-   **`ContentCreationWorkflow` (`src/auto_sns_agent/workflows/content_creation_workflow.py`)**: Orchestrates the entire process from research to content generation to post submission with user approval.
 -   **(Future) Specialized Agents**: More agents might be added for specific tasks like in-depth analysis or image/video generation.
 
 ## Core Functionalities Implemented
@@ -24,7 +25,9 @@ The primary goal is to create an intelligent agent that can:
 -   Tool for fetching general webpage content using `BrowserUseAgent`.
 -   Tool for searching X.com (Twitter) for posts on a given topic, including login capability, and extracting their text using `BrowserUseAgent`.
 -   Orchestrator agent that can use these tools to perform research.
--   Separate content generator agent (basic, awaiting workflow integration).
+-   Content generator agent that creates draft posts based on research.
+-   Social media posting tool that can post content to X.com/Twitter with user approval.
+-   Workflow that integrates research, content generation, and posting with human-in-the-loop confirmation.
 
 ## Technologies
 
@@ -33,7 +36,7 @@ The primary goal is to create an intelligent agent that can:
 -   **Browser Use**: Library for controlling and interacting with web browsers for automation tasks.
 -   **OpenAI GPT models** (e.g., `gpt-4o-mini`, `gpt-4o`): Used by Agno agents for decision-making and by Browser Use for interpreting web pages.
 -   **uv**: For Python packaging and virtual environment management.
--   **pytest**: For testing.
+-   **pytest**: For testing, including `pytest-asyncio` for testing async code.
 
 ## Project Structure
 
@@ -56,8 +59,9 @@ src/
     │   └── social_media_tools.py
     ├── config.py
     ├── main.py      # Main entry point to run the agent
-    └── workflows/   # (Planned for content creation workflow)
-        └── __init__.py
+    └── workflows/   # Content creation workflow
+        ├── __init__.py
+        └── content_creation_workflow.py
 tests/
 ├── __init__.py
 ├── agents/
@@ -104,7 +108,7 @@ tests/
     Now, edit `.env` with your details:
     ```
     OPENAI_API_KEY="sk-YOUR_OPENAI_API_KEY_HERE"
-    X_USERNAME="your_x_username_or_email"
+    X_LOGIN_IDENTIFIER="your_x_username_or_email"
     X_PASSWORD="your_x_password"
     ```
     Ensure your `.env` file is listed in `.gitignore` (it is by default with the provided one).
@@ -123,7 +127,8 @@ This will start an interactive chat loop where you can provide prompts to the ag
 
 -   "What are people saying on Twitter about #opensource AI?"
 -   "Get the main content from https://blog.agno.com/ and tell me about it."
--   "Based on current discussions on Twitter about 'sustainable fashion', give me a concept for a post."
+-   "Research and create a post about sustainable fashion."
+-   "Create a Twitter post about the latest AI developments."
 
 Type `quit` to exit the agent.
 
@@ -135,10 +140,27 @@ To run the test suite (make sure your environment is activated and dependencies,
 uv run pytest
 ```
 
+To run specific tests, like the social media posting tests:
+
+```bash
+uv run pytest tests/tools/test_social_media_tools.py
+```
+
+## Implementation Notes
+
+### Social Media Posting
+
+The social media posting functionality uses the `BrowserUseAgent` to post content to X.com/Twitter. Key implementation details:
+
+- A separate process is used for posting to avoid potential browser resource conflicts.
+- The `gpt-4o` model is used for more reliable interaction with the Twitter interface.
+- The posting process includes detailed instructions for finding and interacting with the posting interface.
+- User confirmation is required before posts are submitted, following a human-in-the-loop approach.
+
 ## Next Steps (Planned)
 
--   Implement the "Content Creation Workflow" (`src/auto_sns_agent/workflows/content_creation_workflow.py`) where the `OrchestratorAgent` passes research findings to the `ContentGeneratorAgent` to produce a draft post.
--   Refine `BrowserUseAgent` prompts for more robust interactions, especially around handling different website structures and potential errors.
--   Add functionality for the agent to post content (requires careful handling of authentication and platform APIs/interactions).
 -   Expand social listening capabilities.
+-   Add support for more social media platforms (e.g., LinkedIn, Instagram).
+-   Implement media attachment functionality (images, videos).
+-   Add scheduling capabilities for posts.
 -   Improve error handling and logging throughout the application.
