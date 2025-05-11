@@ -1,15 +1,12 @@
+import time
 from agno.workflow import Workflow, RunResponse, RunEvent
 from agno.agent import Agent
 from textwrap import dedent
 from typing import Generator
-import time # Add this import
 import subprocess
 import json
 import sys
 import os
-import requests
-import datetime
-import hashlib
 
 from auto_sns_agent.agents.orchestrator import get_orchestrator_agent
 from auto_sns_agent.agents.content_generator import get_content_generator_agent
@@ -30,35 +27,6 @@ class ContentCreationWorkflow(Workflow):
         super().__init__(**data)
         self.orchestrator_agent = get_orchestrator_agent()
         self.content_generator_agent = get_content_generator_agent()
-
-    def _simulate_direct_twitter_post(self, post_content: str) -> str:
-        """
-        Simulates a direct post to Twitter/X using an API.
-        In a production environment, this would use the Twitter API.
-        
-        Args:
-            post_content: The content to post
-            
-        Returns:
-            str: A message indicating success or failure
-        """
-        try:
-            print("Direct API: Simulating Twitter API post...")
-            # In a real implementation, this would use the Twitter API
-            # For example:
-            # client = tweepy.Client(bearer_token, consumer_key, consumer_secret, access_token, access_token_secret)
-            # response = client.create_tweet(text=post_content)
-            
-            # For simulation purposes, we'll generate a fake tweet ID and URL
-            timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-            fake_tweet_id = hashlib.md5(f"{post_content}{timestamp}".encode()).hexdigest()[:10]
-            
-            # Simulate a 2-second delay as if making an API call
-            time.sleep(2)
-            
-            return f"Successfully posted to Twitter via direct API. URL: https://x.com/user/status/{fake_tweet_id}"
-        except Exception as e:
-            return f"Failed to post via direct API: {str(e)}"
 
     def run(self, topic: str, platform: str = "Twitter", research_depth: int = 3) -> Generator[RunResponse, str, RunResponse]:
         """
@@ -140,10 +108,8 @@ class ContentCreationWorkflow(Workflow):
         print("Workflow: Pausing for 3 seconds before posting attempt...")
         time.sleep(3)  # Short pause before subprocess call
         
-        # First attempt: Try posting via the browser automation approach
-        print("Workflow: Starting posting in separate process...")
-        
         # Create a temporary script to perform the posting in a separate process
+        print("Workflow: Starting posting in separate process...")
         temp_script_path = "temp_posting_script.py"
         with open(temp_script_path, "w") as f:
             f.write("""
@@ -186,7 +152,6 @@ if __name__ == "__main__":
         
         # Run the temporary script in a separate process
         final_post_content = draft_post  # No need for [AutoPostingTest] here since it's added in social_media_tools.py
-        browser_post_failed = False
         try:
             print(f"Running posting in separate process: {sys.executable} {temp_script_path} '{final_post_content}' {platform}")
             
@@ -205,30 +170,17 @@ if __name__ == "__main__":
                     parsed_result = json.loads(json_str)
                     if parsed_result["success"]:
                         post_result = parsed_result["result"]
-                        
-                        # Check if the result indicates a successful post with a URL
-                        if "Successfully posted" in post_result and "URL:" in post_result:
-                            print(f"Browser-based posting succeeded with result: {post_result}")
-                        else:
-                            # If post_result doesn't contain clear success indication, mark as failed
-                            browser_post_failed = True
-                            print(f"Browser-based posting did not clearly succeed: {post_result}")
                     else:
-                        browser_post_failed = True
                         post_result = f"Error in posting subprocess: {parsed_result.get('error', 'Unknown error')}"
                 else:
-                    browser_post_failed = True
                     post_result = f"Failed to parse result: separator '==LOGS_END==' not found in output. Raw output: {result[:300]}..."
             except json.JSONDecodeError:
-                browser_post_failed = True
                 post_result = f"Failed to parse JSON from subprocess output. Raw output after separator: {result.split('==LOGS_END==')[-1][:300] if '==LOGS_END==' in result else 'No separator found'}"
                 
             print(f"Posting subprocess completed with result: {post_result}")
         except subprocess.CalledProcessError as e:
-            browser_post_failed = True
             post_result = f"Subprocess error (exit code {e.returncode}): {e.output}"
         except Exception as e:
-            browser_post_failed = True
             post_result = f"Error running posting subprocess: {str(e)}"
         finally:
             # Clean up the temporary script
@@ -237,12 +189,6 @@ if __name__ == "__main__":
                 print(f"Removed temporary script {temp_script_path}")
             except:
                 print(f"Failed to remove temporary script {temp_script_path}")
-        
-        # Second attempt: If browser-based posting failed, try the direct API approach
-        if browser_post_failed and platform.lower() == "twitter":
-            print("Browser-based posting failed. Attempting direct API posting method...")
-            api_result = self._simulate_direct_twitter_post(final_post_content)
-            post_result = f"{post_result}\n\nFallback API Method: {api_result}"
         
         # Assume post_result contains the outcome message (URL or error)
         yield RunResponse(
