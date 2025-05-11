@@ -26,6 +26,7 @@ async def _get_social_media_posts_async(topic: str, platform_url: str, count: in
         login_instructions = (
             f"If you encounter a login page, try to log in using the username '{username}' and password '{password}'. "
             f"Look for username/email and password input fields, and a login button. After logging in, proceed with the search. "
+            f"If the site requests a 2-Factor Authentication (2FA) code (e.g., from an SMS or authenticator app), you may need to manually enter it into the browser window that opens. "
             f"If login fails or is not possible, try to proceed without logging in if the site allows. "
         )
 
