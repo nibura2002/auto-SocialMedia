@@ -61,9 +61,15 @@ class ContentCreationWorkflow(Workflow):
 
         # Step 2: Generate content using the ContentGeneratorAgent
         # The generator agent is tool-less and takes the research summary as input.
+        # Add platform-specific constraints to the prompt
+        character_limit_instruction = ""
+        if platform.lower() in ["twitter", "x", "x.com"]:
+            character_limit_instruction = "IMPORTANT: The post must be strictly less than 280 characters in total, including hashtags, to comply with X.com/Twitter's character limit. "
+        
         generation_prompt = (
             f"You are a helpful and creative social media assistant. Based on the following research summary, "
             f"draft a concise, engaging, and informative social media post for {platform} about '{topic}'. "
+            f"{character_limit_instruction}"
             f"The post should be original and capture the essence of the research. "
             f"Please include 2-3 relevant hashtags. "
             f"Research Summary:\n---\n{research_summary}\n---"
@@ -80,13 +86,43 @@ class ContentCreationWorkflow(Workflow):
 
         draft_post = generator_response.content
         print(f"ContentGeneratorAgent draft post: {draft_post}")
+        
+        # Add character limit validation for Twitter/X posts
+        if platform.lower() in ["twitter", "x", "x.com"] and len(draft_post) >= 280:
+            print(f"Warning: Generated post exceeds Twitter's 280 character limit. Length: {len(draft_post)} characters.")
+            # Truncate the post to fit within Twitter's character limit while preserving hashtags
+            if "#" in draft_post:
+                # Find the position of the first hashtag
+                hashtag_position = draft_post.find("#")
+                # Keep the main text portion (truncated) and all hashtags
+                hashtags = draft_post[hashtag_position:]
+                main_text = draft_post[:hashtag_position].strip()
+                # Calculate available space for main text (280 - hashtags length - 3 for ellipsis - 1 for space)
+                available_space = 280 - len(hashtags) - 4
+                if available_space > 20:  # Ensure we have reasonable space for main text
+                    draft_post = main_text[:available_space] + "... " + hashtags
+                else:
+                    # Not enough space for both; prioritize main content with minimal hashtags
+                    draft_post = draft_post[:276] + "..."
+            else:
+                # No hashtags, simply truncate with ellipsis
+                draft_post = draft_post[:276] + "..."
+            
+            print(f"Post truncated to fit character limit. New length: {len(draft_post)} characters")
+            print(f"Truncated post: {draft_post}")
 
         # Step 3: Ask for user confirmation and get their response
+        # Update confirmation prompt to show character count for Twitter/X posts
         confirmation_prompt_content = (
             f"Draft post generated for '{topic}' on {platform}:\n\n"
             f"---S\n{draft_post}\n---S\n\n"
-            f"Do you want to post this to {platform}? (yes/no)"
         )
+        
+        if platform.lower() in ["twitter", "x", "x.com"]:
+            confirmation_prompt_content += f"Character count: {len(draft_post)}/280\n\n"
+            
+        confirmation_prompt_content += f"Do you want to post this to {platform}? (yes/no)"
+        
         print("Workflow: About to yield for user confirmation...")
         # The yield expression itself will evaluate to what is .send() into the generator
         user_confirmation_content: str = yield RunResponse(content=confirmation_prompt_content, event=RunEvent.run_response)

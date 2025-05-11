@@ -210,6 +210,13 @@ def post_to_social_media(content: str, platform: str = "Twitter", login_identifi
     
     if not OPENAI_API_KEY:
         return "Error: OPENAI_API_KEY not found for browser_use_llm."
+    
+    # Check character limits for Twitter
+    if platform.lower() in ["twitter", "x", "x.com"]:
+        # Account for the "[AutoPostingTest] " prefix (17 chars) that will be added
+        effective_length = len(content) + 17
+        if effective_length >= 280:
+            return f"Error: Content exceeds Twitter's 280 character limit. Current length with prefix: {effective_length} characters. Please shorten your content to less than {280-17} characters."
 
     # Use overrides if provided, otherwise use resolved values from config
     current_login_identifier = login_identifier_override if login_identifier_override is not None else X_LOGIN_IDENTIFIER

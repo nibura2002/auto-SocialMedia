@@ -28,6 +28,7 @@ The primary goal is to create an intelligent agent that can:
 -   Content generator agent that creates draft posts based on research.
 -   Social media posting tool that can post content to X.com/Twitter with user approval.
 -   Workflow that integrates research, content generation, and posting with human-in-the-loop confirmation.
+-   Character limit enforcement for X.com/Twitter posts (strictly less than 280 characters).
 
 ## Technologies
 
@@ -156,6 +157,9 @@ The social media posting functionality uses the `BrowserUseAgent` to post conten
 - The `gpt-4o` model is used for more reliable interaction with the Twitter interface.
 - The posting process includes detailed instructions for finding and interacting with the posting interface.
 - User confirmation is required before posts are submitted, following a human-in-the-loop approach.
+- Posts for X.com/Twitter are strictly enforced to be less than 280 characters (including the "[AutoPostingTest]" prefix).
+- For X.com posts that exceed the limit, automatic truncation is applied while attempting to preserve hashtags.
+- The user is shown the character count when confirming Twitter posts.
 
 ## Next Steps (Planned)
 
