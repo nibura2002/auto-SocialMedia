@@ -1,22 +1,35 @@
 import asyncio
 from auto_sns_agent.agents.orchestrator import get_orchestrator_agent
 from auto_sns_agent.config import OPENAI_API_KEY # To check if API key is loaded
+from auto_sns_agent.workflows.content_creation_workflow import ContentCreationWorkflow
+
+# Global instance of the workflow, initialized once.
+# This is okay for a CLI tool; for other contexts, you might manage lifetime differently.
+_content_creation_workflow = None
+
+def get_content_creation_workflow():
+    global _content_creation_workflow
+    if _content_creation_workflow is None:
+        _content_creation_workflow = ContentCreationWorkflow()
+    return _content_creation_workflow
 
 def run_chat_loop():
-    """Runs a chat loop to interact with the OrchestratorAgent."""
-    print("Initializing Social Media Creation Agent (Orchestrator)...")
+    """Runs a chat loop to interact with the OrchestratorAgent or ContentCreationWorkflow."""
+    print("Initializing Social Media Creation Agent...")
     
     if not OPENAI_API_KEY:
         print("\nERROR: OPENAI_API_KEY is not set. Please ensure it's in your .env file and accessible.")
         print("The agent cannot function without the API key.")
         return
 
-    orchestrator = get_orchestrator_agent()
-    print("Orchestrator Agent is ready. Type your requests or 'quit' to exit.")
+    orchestrator = get_orchestrator_agent() # Still have direct access if needed or for non-workflow tasks
+    # Workflow will be initialized when first needed by get_content_creation_workflow()
+    
+    print("Agent & Workflow system is ready. Type your requests or 'quit' to exit.")
     print("Example prompts:")
-    print("  - \"What are people saying on Twitter about #opensource AI?\"")
-    print("  - \"Get the main content from https://blog.agno.com/ and tell me about it.\"")
-    print("  - \"Based on current discussions on Twitter about 'sustainable fashion', give me a concept for a post.\"")
+    print("  - \"What are people saying on Twitter about #opensource AI?\" (Uses Orchestrator Agent)")
+    print("  - \"create post about: benefits of dark mode for productivity\" (Uses Content Creation Workflow)")
+    print("  - \"Get the main content from https://blog.agno.com/ and tell me about it.\" (Uses Orchestrator Agent)")
     print("-" * 30)
 
     while True:
@@ -28,30 +41,33 @@ def run_chat_loop():
             if not user_input.strip():
                 continue
 
-            print("\nAgent thinking...")
-            # For Agno agents, agent.run() is synchronous by default if the underlying model/tools are.
-            # If you had async tools that weren't run with asyncio.run() inside,
-            # you might need to handle agent.run() in an async context.
-            # Our current browser tools use asyncio.run() internally, so this should be fine.
-            response = orchestrator.run(user_input)
+            print("\nSystem thinking...")
             
-            print("\nOrchestrator:")
-            if hasattr(response, 'content') and response.content:
-                # The response.content should be markdown if markdown=True was set for the agent
-                print(response.content)
-            else:
-                print("No textual content in response or response format unexpected.")
-            
-            # If you want to see tool calls (if show_tool_calls=True on agent):
-            # Agno usually prints these to stdout during the run if they occur.
-            # If response object has tool_calls attribute:
-            # if hasattr(response, 'tool_calls') and response.tool_calls:
-            #     print("\n--- Tool Calls Made ---")
-            #     for tc in response.tool_calls:
-            #         print(f"Tool: {tc.tool_name}, Input: {tc.tool_input}, Output: {tc.tool_output}")
-            # else:
-            #     print("(No direct tool calls reported in final response object)")
+            response_content = "No response generated."
+            response_source = "System"
 
+            create_post_command = "create post about:"
+            if user_input.lower().startswith(create_post_command):
+                topic = user_input[len(create_post_command):].strip()
+                if topic:
+                    print(f"Initiating Content Creation Workflow for topic: '{topic}'")
+                    workflow = get_content_creation_workflow()
+                    # You might want to specify platform and research_depth or parse from user_input too
+                    workflow_response = workflow.run(topic=topic, platform="Twitter", research_depth=2)
+                    response_content = workflow_response.content
+                    response_source = "Content Creation Workflow"
+                else:
+                    response_content = "Please specify a topic after 'create post about:'"
+            else:
+                # Default to OrchestratorAgent for other queries
+                orchestrator_response = orchestrator.run(user_input)
+                if hasattr(orchestrator_response, 'content') and orchestrator_response.content:
+                    response_content = orchestrator_response.content
+                response_source = "Orchestrator Agent"
+            
+            print(f"\n{response_source}:")
+            print(response_content)
+            
             print("\n" + "-" * 30)
 
         except Exception as e:
