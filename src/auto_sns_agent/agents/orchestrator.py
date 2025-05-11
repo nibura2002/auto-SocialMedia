@@ -3,7 +3,7 @@ from agno.models.openai import OpenAIChat
 
 from auto_sns_agent.config import OPENAI_API_KEY
 from auto_sns_agent.tools.browser_tools import get_webpage_main_content
-from auto_sns_agent.tools.social_media_tools import get_social_media_posts_for_topic
+from auto_sns_agent.tools.social_media_tools import get_social_media_posts_for_topic, post_to_social_media
 
 
 def get_orchestrator_agent() -> Agent:
@@ -16,7 +16,8 @@ def get_orchestrator_agent() -> Agent:
     
     tools = [
         get_webpage_main_content,
-        get_social_media_posts_for_topic
+        get_social_media_posts_for_topic,
+        post_to_social_media
     ]
 
     agent = Agent(
@@ -38,6 +39,7 @@ def get_orchestrator_agent() -> Agent:
             "  3. Then, based on the gathered information, briefly outline or conceptualize the social media post that should be created.",
             "     (You are not writing the final post yourself; you are providing the gathered info and a concept to a specialist content generator).",
             "If a specific research source (general web vs. social media) is implied by the request, prioritize that.",
+            "You also have a tool to post content to social media. If asked to post provided content, use the 'post_to_social_media' tool.",
             "Always clearly state which tool you are using and for what purpose if you decide to use one."
         ],
         show_tool_calls=True,

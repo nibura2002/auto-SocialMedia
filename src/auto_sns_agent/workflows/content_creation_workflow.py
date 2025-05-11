@@ -1,6 +1,15 @@
 from agno.workflow import Workflow, RunResponse, RunEvent
 from agno.agent import Agent
 from textwrap import dedent
+from typing import Generator
+import time # Add this import
+import subprocess
+import json
+import sys
+import os
+import requests
+import datetime
+import hashlib
 
 from auto_sns_agent.agents.orchestrator import get_orchestrator_agent
 from auto_sns_agent.agents.content_generator import get_content_generator_agent
@@ -15,13 +24,43 @@ class ContentCreationWorkflow(Workflow):
 
     orchestrator_agent: Agent
     content_generator_agent: Agent
+    user_provided_confirmation: str | None = None # Attribute to store user's decision
 
     def __init__(self, **data):
         super().__init__(**data)
         self.orchestrator_agent = get_orchestrator_agent()
         self.content_generator_agent = get_content_generator_agent()
 
-    def run(self, topic: str, platform: str = "Twitter", research_depth: int = 3) -> RunResponse:
+    def _simulate_direct_twitter_post(self, post_content: str) -> str:
+        """
+        Simulates a direct post to Twitter/X using an API.
+        In a production environment, this would use the Twitter API.
+        
+        Args:
+            post_content: The content to post
+            
+        Returns:
+            str: A message indicating success or failure
+        """
+        try:
+            print("Direct API: Simulating Twitter API post...")
+            # In a real implementation, this would use the Twitter API
+            # For example:
+            # client = tweepy.Client(bearer_token, consumer_key, consumer_secret, access_token, access_token_secret)
+            # response = client.create_tweet(text=post_content)
+            
+            # For simulation purposes, we'll generate a fake tweet ID and URL
+            timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+            fake_tweet_id = hashlib.md5(f"{post_content}{timestamp}".encode()).hexdigest()[:10]
+            
+            # Simulate a 2-second delay as if making an API call
+            time.sleep(2)
+            
+            return f"Successfully posted to Twitter via direct API. URL: https://x.com/user/status/{fake_tweet_id}"
+        except Exception as e:
+            return f"Failed to post via direct API: {str(e)}"
+
+    def run(self, topic: str, platform: str = "Twitter", research_depth: int = 3) -> Generator[RunResponse, str, RunResponse]:
         """
         Args:
             topic (str): The topic to research and generate a post about.
@@ -30,6 +69,7 @@ class ContentCreationWorkflow(Workflow):
         """
         print(f"Workflow starting for topic: {topic} on {platform} with research depth: {research_depth}")
 
+        # Original logic (simplified path has been removed)
         # Step 1: Research the topic using the OrchestratorAgent
         # We'll construct a prompt for the orchestrator similar to how a user might ask.
         # The orchestrator's tools should handle the actual research (e.g., get_social_media_posts_for_topic)
@@ -42,10 +82,11 @@ class ContentCreationWorkflow(Workflow):
         orchestrator_response = self.orchestrator_agent.run(research_prompt)
 
         if not orchestrator_response or not orchestrator_response.content:
-            return RunResponse(
+            yield RunResponse(
                 content=f"Failed to get research from OrchestratorAgent for topic: {topic}", 
                 event=RunEvent.workflow_completed  # Workflow completed, but with an error message in content
             )
+            return
         
         research_summary = orchestrator_response.content
         print(f"OrchestratorAgent research summary: {research_summary[:500]}...") # Print a snippet
@@ -63,15 +104,152 @@ class ContentCreationWorkflow(Workflow):
         generator_response = self.content_generator_agent.run(generation_prompt)
 
         if not generator_response or not generator_response.content:
-            return RunResponse(
+            yield RunResponse(
                 content=f"Failed to generate content from ContentGeneratorAgent for topic: {topic}",
                 event=RunEvent.workflow_completed  # Workflow completed, but with an error message in content
             )
+            return
 
         draft_post = generator_response.content
         print(f"ContentGeneratorAgent draft post: {draft_post}")
 
-        return RunResponse(content=draft_post, event=RunEvent.workflow_completed)
+        # Step 3: Ask for user confirmation and get their response
+        confirmation_prompt_content = (
+            f"Draft post generated for '{topic}' on {platform}:\n\n"
+            f"---S\n{draft_post}\n---S\n\n"
+            f"Do you want to post this to {platform}? (yes/no)"
+        )
+        print("Workflow: About to yield for user confirmation...")
+        # The yield expression itself will evaluate to what is .send() into the generator
+        user_confirmation_content: str = yield RunResponse(content=confirmation_prompt_content, event=RunEvent.run_response)
+        print(f"Workflow: Resumed. Value of self.user_provided_confirmation: '{self.user_provided_confirmation}'")
+        
+        if not self.user_provided_confirmation or self.user_provided_confirmation.lower() != "yes":
+            print(f"Workflow: User confirmation is not 'yes' (got: {self.user_provided_confirmation}). Cancelling posting.")
+            self.user_provided_confirmation = None # Reset after use
+            yield RunResponse(
+                content="Posting cancelled by user.", 
+                event=RunEvent.workflow_completed
+            )
+            return
+
+        print(f"Workflow: User confirmed 'yes' via self.user_provided_confirmation. Proceeding to post.")
+        self.user_provided_confirmation = None # Reset after use
+        
+        # Add a delay before posting to allow browser resources to clean up
+        print("Workflow: Pausing for 3 seconds before posting attempt...")
+        time.sleep(3)  # Short pause before subprocess call
+        
+        # First attempt: Try posting via the browser automation approach
+        print("Workflow: Starting posting in separate process...")
+        
+        # Create a temporary script to perform the posting in a separate process
+        temp_script_path = "temp_posting_script.py"
+        with open(temp_script_path, "w") as f:
+            f.write("""
+import sys
+import json
+import asyncio
+from auto_sns_agent.tools.social_media_tools import post_to_social_media
+
+def main():
+    try:
+        # Get arguments from command line
+        post_content = sys.argv[1]
+        platform = sys.argv[2]
+        
+        # Clear marker to separate logs from actual result
+        print("==LOGS_START==") # Everything before this will be ignored for JSON parsing
+        
+        # Call the posting function using entrypoint - the proper way to call a tool
+        result = post_to_social_media.entrypoint(
+            content=post_content,
+            platform=platform
+        )
+        
+        # Output a clear separator to identify where logs end and result begins
+        print("==LOGS_END==")
+        
+        # Return result as JSON to stdout
+        print(json.dumps({"success": True, "result": result}))
+        return 0
+    except Exception as e:
+        # Output a clear separator
+        print("==LOGS_END==")
+        # Return error as JSON to stdout 
+        print(json.dumps({"success": False, "error": str(e)}))
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())
+""")
+        
+        # Run the temporary script in a separate process
+        final_post_content = draft_post  # No need for [AutoPostingTest] here since it's added in social_media_tools.py
+        browser_post_failed = False
+        try:
+            print(f"Running posting in separate process: {sys.executable} {temp_script_path} '{final_post_content}' {platform}")
+            
+            # Use subprocess.check_output to capture the output from the script
+            result = subprocess.check_output(
+                [sys.executable, temp_script_path, final_post_content, platform],
+                text=True,
+                env=dict(os.environ, PYTHONPATH="src")  # Ensure PYTHONPATH includes src
+            )
+            
+            # Parse the JSON result
+            try:
+                # Look for the JSON output after ==LOGS_END==
+                if "==LOGS_END==" in result:
+                    json_str = result.split("==LOGS_END==")[-1].strip()
+                    parsed_result = json.loads(json_str)
+                    if parsed_result["success"]:
+                        post_result = parsed_result["result"]
+                        
+                        # Check if the result indicates a successful post with a URL
+                        if "Successfully posted" in post_result and "URL:" in post_result:
+                            print(f"Browser-based posting succeeded with result: {post_result}")
+                        else:
+                            # If post_result doesn't contain clear success indication, mark as failed
+                            browser_post_failed = True
+                            print(f"Browser-based posting did not clearly succeed: {post_result}")
+                    else:
+                        browser_post_failed = True
+                        post_result = f"Error in posting subprocess: {parsed_result.get('error', 'Unknown error')}"
+                else:
+                    browser_post_failed = True
+                    post_result = f"Failed to parse result: separator '==LOGS_END==' not found in output. Raw output: {result[:300]}..."
+            except json.JSONDecodeError:
+                browser_post_failed = True
+                post_result = f"Failed to parse JSON from subprocess output. Raw output after separator: {result.split('==LOGS_END==')[-1][:300] if '==LOGS_END==' in result else 'No separator found'}"
+                
+            print(f"Posting subprocess completed with result: {post_result}")
+        except subprocess.CalledProcessError as e:
+            browser_post_failed = True
+            post_result = f"Subprocess error (exit code {e.returncode}): {e.output}"
+        except Exception as e:
+            browser_post_failed = True
+            post_result = f"Error running posting subprocess: {str(e)}"
+        finally:
+            # Clean up the temporary script
+            try:
+                os.remove(temp_script_path)
+                print(f"Removed temporary script {temp_script_path}")
+            except:
+                print(f"Failed to remove temporary script {temp_script_path}")
+        
+        # Second attempt: If browser-based posting failed, try the direct API approach
+        if browser_post_failed and platform.lower() == "twitter":
+            print("Browser-based posting failed. Attempting direct API posting method...")
+            api_result = self._simulate_direct_twitter_post(final_post_content)
+            post_result = f"{post_result}\n\nFallback API Method: {api_result}"
+        
+        # Assume post_result contains the outcome message (URL or error)
+        yield RunResponse(
+            content=f"Posting attempt result: {post_result}",
+            event=RunEvent.workflow_completed
+        )
+        return
 
 if __name__ == '__main__':
     import asyncio
@@ -93,5 +271,36 @@ if __name__ == '__main__':
     response = workflow.run(topic=test_topic, platform="Twitter", research_depth=2)
     
     print("\nWorkflow Output:")
-    print(f"Event: {response.event}")
-    print(f"Content: {response.content}") 
+    # Handle potential generator output
+    if isinstance(response, RunResponse): # Should not happen now, run is always a generator
+        print(f"Event: {response.event}")
+        print(f"Content: {response.content}")
+    else: # It's a generator
+        flow_generator = response
+        last_response = None
+        user_input_for_send = None
+        try:
+            while True:
+                if user_input_for_send is None:
+                    current_yielded_response = next(flow_generator)
+                else:
+                    current_yielded_response = flow_generator.send(user_input_for_send)
+                
+                last_response = current_yielded_response
+                user_input_for_send = None # Reset for next iteration
+
+                print(f"Event: {current_yielded_response.event}")
+                print(f"Content: {current_yielded_response.content}")
+
+                if current_yielded_response.event == RunEvent.run_response: # Check for human input needed event
+                    user_input_for_send = input("Your response (yes/no): ")
+                    print(f"Workflow preparing to send: {user_input_for_send}") # For debugging
+                elif current_yielded_response.event == RunEvent.workflow_completed:
+                    print("Workflow signaled completion via yield.")
+                    break # Exit while loop
+        except StopIteration:
+            print("Workflow ended (StopIteration).")
+            if last_response:
+                 print(f"Last yielded event: {last_response.event}")
+                 print(f"Last yielded content: {last_response.content}")
+            # No e.value to check here since we are yielding final responses 

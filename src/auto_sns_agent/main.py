@@ -3,6 +3,8 @@ from auto_sns_agent.agents.orchestrator import get_orchestrator_agent
 from auto_sns_agent.config import OPENAI_API_KEY # To check if API key is loaded
 from auto_sns_agent.workflows.content_creation_workflow import ContentCreationWorkflow
 
+from agno.workflow import RunEvent # Removed UserInput import attempt
+
 # Global instance of the workflow, initialized once.
 # This is okay for a CLI tool; for other contexts, you might manage lifetime differently.
 _content_creation_workflow = None
@@ -52,10 +54,53 @@ def run_chat_loop():
                 if topic:
                     print(f"Initiating Content Creation Workflow for topic: '{topic}'")
                     workflow = get_content_creation_workflow()
-                    # You might want to specify platform and research_depth or parse from user_input too
-                    workflow_response = workflow.run(topic=topic, platform="Twitter", research_depth=2)
-                    response_content = workflow_response.content
-                    response_source = "Content Creation Workflow"
+                    
+                    # Workflow can now be a generator due to human_intervention_required
+                    flow_generator = workflow.run(topic=topic, platform="Twitter", research_depth=2)
+                    
+                    last_response = None
+                    user_input_for_send = None
+                    try:
+                        while True:
+                            if user_input_for_send is None:
+                                current_yielded_response = next(flow_generator)
+                            else:
+                                # Before sending, if the workflow is expecting a confirmation, set it.
+                                # We infer this by checking the content of the last yielded response.
+                                if last_response and last_response.event == RunEvent.run_response and \
+                                   ("Do you want to post this to" in last_response.content or \
+                                    "Do you want to post this to {platform}? (yes/no)" in last_response.content): # Check both old and new prompt format
+                                    print(f"MAIN: Setting workflow.user_provided_confirmation = '{user_input_for_send}'")
+                                    workflow.user_provided_confirmation = user_input_for_send
+                                
+                                current_yielded_response = flow_generator.send(user_input_for_send)
+                            
+                            last_response = current_yielded_response
+                            user_input_for_send = None # Reset for next iteration
+
+                            if current_yielded_response.event == RunEvent.run_response: # Your event for human input
+                                print(f"\nWorkflow requires input:")
+                                print(current_yielded_response.content) 
+                                user_input_for_send = input("Your response: ")
+                                print("\nSystem thinking after human input...")
+                            elif current_yielded_response.event == RunEvent.workflow_completed:
+                                response_content = current_yielded_response.content
+                                response_source = "Content Creation Workflow (Completed via Yield)"
+                                break # Exit the while loop, workflow is done
+                            else:
+                                # Handle other intermediate events if necessary or treat as final if loop breaks
+                                response_content = f"Workflow intermediate: {current_yielded_response.content}"
+                                response_source = f"Content Creation Workflow ({current_yielded_response.event})"
+                                # Potentially break or continue depending on how other events should be handled
+
+                    except StopIteration:
+                        response_source = "Content Creation Workflow (Finished)"
+                        if last_response and last_response.event == RunEvent.workflow_completed:
+                            response_content = last_response.content
+                        elif last_response: # Some other state was the last thing yielded
+                            response_content = f"Workflow ended after: {last_response.content}"
+                        else:
+                            response_content = "Workflow completed with no specific final content."
                 else:
                     response_content = "Please specify a topic after 'create post about:'"
             else:
