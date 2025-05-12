@@ -1,6 +1,6 @@
 # Social Media Creation Agent (auto-sns)
 
-This project, developed for the Global Agent Hackathon May 2025, is a Python-based agent designed to automate aspects of social media content creation and research. It leverages the Agno framework for agent orchestration and Browser Use for web interactions.
+This project, developed for browser use study, is a Python-based agent designed to automate aspects of social media content creation and research. It leverages the Agno framework for agent orchestration and Browser Use for web interactions.
 
 ## Goal
 
