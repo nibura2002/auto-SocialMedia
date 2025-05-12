@@ -10,7 +10,7 @@ The primary goal is to create an agent that can:
 - Post the generated content to specified social media platforms (initially Twitter).
 - Optionally, monitor social media for mentions and summarize findings.
 
-This project aims to win the Global Agent Hackathon May 2025 by showcasing an innovative combination of Agno and Browser Use.
+This project aims to study the innovative combination of Agno and Browser Use.
 
 ## 2. Architecture
 
@@ -117,13 +117,12 @@ auto-sns/
 └── DESIGN.md
 ```
 
-## 6. Key Success Metrics for Hackathon
+## 6. Key Success Metrics
 
 - **Working Demo**: Successfully post content to at least one social media platform (e.g., Twitter) based on a user prompt.
 - **Innovative Use of Agno & Browser Use**: Clear demonstration of how Agno orchestrates tasks and Browser Use interacts with web UIs.
 - **Code Quality**: Clean, well-structured, and commented code.
 - **Comprehensive README**: Clear setup instructions, explanation of functionality, and demo video link.
-- **Adherence to Hackathon Rules**: Including submission criteria.
 
 ## 7. Potential Challenges & Mitigations
 
@@ -134,7 +133,7 @@ auto-sns/
 - **Rate Limiting/CAPTCHAs**: Automated interactions can be flagged.
     - **Mitigation**: Implement respectful interaction speeds, handle common CAPTCHAs if Browser Use supports it, or focus on platforms with more lenient automation policies for the demo.
 - **Scope Creep**: Trying to support too many platforms or features.
-    - **Mitigation**: Focus on a core use case (e.g., Twitter posting) for the initial hackathon submission.
+    - **Mitigation**: Focus on a core use case (e.g., Twitter posting).
 
 ## 8. Next Steps (Implementation Plan Outline)
 
