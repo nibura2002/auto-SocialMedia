@@ -1,1 +1,1 @@
- 
+# This file makes auto_sns_agent a Python package 

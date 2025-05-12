@@ -11,6 +11,13 @@ import os
 from auto_sns_agent.agents.orchestrator import get_orchestrator_agent
 from auto_sns_agent.agents.content_generator import get_content_generator_agent
 
+# Length of the prefix added by the posting tool (e.g., "[AutoPostingTest] " is 18 chars)
+POSTING_PREFIX_LENGTH = 18
+TWITTER_CHAR_LIMIT = 280
+# Max length for the content itself, to ensure (content + prefix) < TWITTER_CHAR_LIMIT
+# So, len(content) <= TWITTER_CHAR_LIMIT - 1 - POSTING_PREFIX_LENGTH
+MAX_CONTENT_LENGTH_FOR_TWITTER_POST = TWITTER_CHAR_LIMIT - 1 - POSTING_PREFIX_LENGTH # 279 - 18 = 261
+
 class ContentCreationWorkflow(Workflow):
     """Workflow to research a topic and generate a draft social media post."""
 
@@ -88,28 +95,36 @@ class ContentCreationWorkflow(Workflow):
         print(f"ContentGeneratorAgent draft post: {draft_post}")
         
         # Add character limit validation for Twitter/X posts
-        if platform.lower() in ["twitter", "x", "x.com"] and len(draft_post) >= 280:
-            print(f"Warning: Generated post exceeds Twitter's 280 character limit. Length: {len(draft_post)} characters.")
-            # Truncate the post to fit within Twitter's character limit while preserving hashtags
-            if "#" in draft_post:
-                # Find the position of the first hashtag
-                hashtag_position = draft_post.find("#")
-                # Keep the main text portion (truncated) and all hashtags
-                hashtags = draft_post[hashtag_position:]
-                main_text = draft_post[:hashtag_position].strip()
-                # Calculate available space for main text (280 - hashtags length - 3 for ellipsis - 1 for space)
-                available_space = 280 - len(hashtags) - 4
-                if available_space > 20:  # Ensure we have reasonable space for main text
-                    draft_post = main_text[:available_space] + "... " + hashtags
+        if platform.lower() in ["twitter", "x", "x.com"]:
+            if len(draft_post) > MAX_CONTENT_LENGTH_FOR_TWITTER_POST:
+                print(f"Warning: Generated post (length {len(draft_post)}) exceeds effective Twitter limit of {MAX_CONTENT_LENGTH_FOR_TWITTER_POST} (to allow for prefix). Truncating...")
+                # Truncate the post to fit within Twitter's character limit while preserving hashtags
+                if "#" in draft_post:
+                    hashtag_position = draft_post.rfind("#") # Find last hashtag to keep more text
+                    # Ensure hashtags are at the end or reasonably close
+                    if len(draft_post) - hashtag_position < 80: # Heuristic: hashtags are likely at the end
+                        hashtags = draft_post[hashtag_position:]
+                        main_text = draft_post[:hashtag_position].strip()
+                        # Calculate available space for main text, aiming for MAX_CONTENT_LENGTH_FOR_TWITTER_POST
+                        # Ellipsis takes 3 chars, space before hashtags takes 1.
+                        available_space = MAX_CONTENT_LENGTH_FOR_TWITTER_POST - len(hashtags) - 4 
+                        if available_space > 20:  # Ensure we have reasonable space for main text
+                            draft_post = main_text[:available_space] + "... " + hashtags
+                        else:
+                            # Not enough space for both; prioritize main content with minimal hashtags, truncate harder
+                            draft_post = draft_post[:(MAX_CONTENT_LENGTH_FOR_TWITTER_POST - 3)] + "..."
+                    else: # Hashtags are too early, simple truncation
+                         draft_post = draft_post[:(MAX_CONTENT_LENGTH_FOR_TWITTER_POST - 3)] + "..."
                 else:
-                    # Not enough space for both; prioritize main content with minimal hashtags
-                    draft_post = draft_post[:276] + "..."
-            else:
-                # No hashtags, simply truncate with ellipsis
-                draft_post = draft_post[:276] + "..."
-            
-            print(f"Post truncated to fit character limit. New length: {len(draft_post)} characters")
-            print(f"Truncated post: {draft_post}")
+                    # No hashtags, simply truncate with ellipsis
+                    draft_post = draft_post[:(MAX_CONTENT_LENGTH_FOR_TWITTER_POST - 3)] + "..."
+                
+                # Ensure it doesn't exceed by any chance after manipulations
+                if len(draft_post) > MAX_CONTENT_LENGTH_FOR_TWITTER_POST:
+                    draft_post = draft_post[:MAX_CONTENT_LENGTH_FOR_TWITTER_POST]
+
+                print(f"Post truncated. New content length: {len(draft_post)} characters")
+                print(f"Truncated post: {draft_post}")
 
         # Step 3: Ask for user confirmation and get their response
         # Update confirmation prompt to show character count for Twitter/X posts
@@ -119,7 +134,8 @@ class ContentCreationWorkflow(Workflow):
         )
         
         if platform.lower() in ["twitter", "x", "x.com"]:
-            confirmation_prompt_content += f"Character count: {len(draft_post)}/280\n\n"
+            final_post_length_with_prefix = len(draft_post) + POSTING_PREFIX_LENGTH
+            confirmation_prompt_content += f"Character count (including prefix): {final_post_length_with_prefix}/{TWITTER_CHAR_LIMIT}\n\n"
             
         confirmation_prompt_content += f"Do you want to post this to {platform}? (yes/no)"
         
