@@ -94,7 +94,7 @@ The system will consist of the following main components:
 ## 5. Project Structure (Initial src-layout)
 
 ```
-auto-sns/
+auto-SocialMedia/
 ├── .git/
 ├── .venv/
 ├── src/
