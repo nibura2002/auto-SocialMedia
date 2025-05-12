@@ -123,9 +123,11 @@ async def _post_to_social_media_async(content: str, platform_url: str, login_ide
             f"2. On the login form, type '{login_identifier}' in the username/email field. "
             f"3. Click '次へ' (Next) button. "
             f"4. On the password screen, type '{password}' carefully. "
-            f"5. Click 'ログイン' button or press Enter to submit. "
-            f"6. If login fails the first time, try again following the same steps. "
-            f"7. If repeated login attempts fail, try to continue without logging in (search for the topic as a guest). "
+            f"5. Search for the login button element after typing the password. "
+            f"6. Click the login button or press Enter to submit. "
+            f"* The login button may be disabled initially but will become enabled after typing the password. Need to find the button after it becomes enabled. "
+            f"7. If login fails the first time, try again following the same steps. "
+            f"8. If repeated login attempts fail, you won't be able to proceed - report this as an error. "
             f"8. If the site requests a 2-Factor Authentication (2FA) code, you won't be able to proceed - report this as an error. "
         )
 
